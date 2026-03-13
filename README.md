@@ -156,8 +156,8 @@ Repository-specific contributor workflow details live in `AGENTS.md` and the
 
 ## License and Attribution
 
-This project is intended to be distributed under the MIT License. See the
-repository `LICENSE` file.
+This project is distributed under the MIT License. See the repository
+`LICENSE` file.
 
 Copyright (C) 2025-2026 Hard Problems Group, LLC.
 
