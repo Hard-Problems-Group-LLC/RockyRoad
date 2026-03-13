@@ -6,6 +6,20 @@ and ISO 8601 timestamps.
 
 *
 
+  Request: Split the former Stage 3 design material into a separate
+  `Trailhead` repository and remove Stage 3 ownership from RockyRoad.
+  Requestor: operator
+  Owner: Codex
+  Completed: 2026-03-13T01:18:02-07:00
+  Outcome: Moved the Stage 3 gateway architecture into the new `Trailhead`
+  repository scaffold, removed the Stage 3 design document from RockyRoad,
+  and re-scoped RockyRoad's public documentation to Stage 1 and Stage 2 host
+  provisioning.
+  Blocker resolution: The split preserved the original architecture in the
+  new repository while keeping RockyRoad accurate and publication-safe.
+
+*
+
   Request: Prepare RockyRoad for first public publication by replacing the
   placeholder README with an accurate public-facing overview and scrubbing
   the tree for publication-sensitive references.

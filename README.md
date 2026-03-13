@@ -6,27 +6,28 @@ workstations. The project is designed for Tailscale-only administration,
 rootless Podman workloads, enforcing SELinux systems, and resilient remote
 access with Mosh and SSH.
 
-The repository focuses on the host-side bootstrap required before larger
+The repository focuses on the host-side bootstrap required before higher-level
 containerized service stacks are deployed. Server flows are automated and
 non-interactive. Workstation flows are interactive and offer explicit
 conflict-resolution prompts when existing toolchains are already present.
 
+The former Stage 3 gateway-stack design now lives in the separate
+`Trailhead` repository so RockyRoad stays scoped to machine provisioning.
+
 ## What RockyRoad Does
 
-RockyRoad currently covers two implemented provisioning stages plus one
-documented future stage:
+RockyRoad currently covers two implemented provisioning stages:
 
 1. Core operating system and network hardening.
 2. Rootless container and developer environment bootstrap.
-3. Planned gateway and application-container deployment architecture.
 
 Today, the implemented scripts establish a baseline host that:
 
 * Restricts ingress exclusively to the `tailscale0` overlay network.
 * Blackholes public IP ingress through strict `firewalld` zoning.
 * Keeps container workloads rootless under Podman.
-* Preserves SELinux enforcing mode and uses explicit `:Z`/`:ro,Z` relabeling
-  for host-to-container mounts.
+* Preserves SELinux enforcing mode and uses explicit `:Z` or `:ro,Z`
+  relabeling for host-to-container mounts.
 * Provisions Tailscale certificates for TLS-enabled diagnostic checks.
 * Uses idempotent provisioning logic so scripts can be rerun safely.
 
@@ -65,9 +66,6 @@ Today, the implemented scripts establish a baseline host that:
   Concise server-oriented operator guide.
 * `README-WORKSTATIONS.TXT`
   Concise workstation-oriented operator guide.
-* `linode-server-stage-3-instructions.md`
-  Architecture and design specification for the planned Stage 3 gateway and
-  subordinate service deployment model.
 * `AGENTS.md`
   Contributor and automation guidance for AI-assisted work in this
   repository.
@@ -134,13 +132,10 @@ Implemented for servers and workstations, including interactive smoketests
 that validate TLS, rootless Podman networking, and SELinux-aware volume
 mounting.
 
-### Stage 3: Gateway Deployment
+### Higher-Level Service Stacks
 
-Not yet implemented in this repository. The design intent is documented in
-`linode-server-stage-3-instructions.md`. The current specification describes
-a Tailscale-protected Caddy ingress tier, a FastAPI gateway backend, a
-React/Vite frontend, and isolated subordinate application containers routed
-through a forward-auth pattern.
+Out of scope for RockyRoad. Application gateway stacks now live in separate
+repositories such as `Trailhead`.
 
 ## Development Notes
 

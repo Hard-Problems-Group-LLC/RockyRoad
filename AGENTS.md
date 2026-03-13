@@ -15,8 +15,8 @@ the managed TheKnowledge footer.
 The `RockyRoad` repository contains idempotent Python 3.9+ provisioning
 scripts for bootstrapping highly secure, isolated server and developer
 workstation environments on Rocky Linux 9.x. These scripts establish the
-foundational infrastructure required to host complex, isolated container
-stacks (Stage 3). 
+foundational infrastructure required before higher-level container stacks are
+deployed.
 
 This file defines the domain-specific constraints for this repository. It is
 designed to be merged with the generalized operational standards provided by

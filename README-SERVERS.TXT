@@ -27,7 +27,7 @@ using the new Tailscale IP address.
 
 STAGE 2: CONTAINER & DEV ENVIRONMENT (linode-server-setup-stage-2.py)
 ---------------------------------------------------------------------
-This script provisions the rootless container runtime and routing tier.
+This script provisions the rootless container runtime and validation path.
 1. Injects a custom timestamped Yellow PS1 prompt.
 2. Installs NVM, Node.js, Pyenv, and Virtualenv.
 3. Installs Podman, passt-selinux, and required development headers.
@@ -39,8 +39,8 @@ Note: The script will automatically halt and require a user logout/login
 cycle if shell profile modifications are made. Execute the script again
 after logging back in to complete the process.
 
-STAGE 3: GATEWAY DEPLOYMENT (Pending)
--------------------------------------
-Stage 3 is handled by Codex. It utilizes a Caddy reverse proxy with a
-Forward Auth pattern, delegating authentication (Local + Google OAuth) to a
-FastAPI backend, with dynamic routing to isolated subordinate containers.
+APPLICATION STACKS
+------------------
+Application gateway stacks are out of scope for RockyRoad itself. Use a
+separate deployment repository, such as `Trailhead`, after the host baseline
+has been validated with Stages 1 and 2.

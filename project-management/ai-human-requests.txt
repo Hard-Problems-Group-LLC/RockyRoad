@@ -18,6 +18,16 @@ Completed Requests
 
 *
 
+  2026-03-13T01:18:02-07:00
+  Requestor: operator
+  Action: Split RockyRoad's Stage 3 design into a new `Trailhead`
+  repository, migrate the design material there, and remove the Stage 3
+  notes from RockyRoad.
+  Status: completed by Codex on 2026-03-13; the new repository scaffold was
+  prepared and RockyRoad was re-scoped to host provisioning only.
+
+*
+
   2026-03-13T00:00:00-07:00
   Requestor: operator
   Action: Prepare RockyRoad for first public publication by improving the
