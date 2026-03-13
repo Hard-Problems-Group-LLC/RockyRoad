@@ -68,6 +68,8 @@ def enforce_preconditions() -> None:
 
 def install_dependencies() -> None:
     """Idempotent installation of core packages."""
+    logger.info("Cleaning DNF cache to prevent stale metadata issues...")
+    run_cmd(["dnf", "clean", "all"])
     logger.info("Checking dependencies...")
     missing_pkgs = []
     for pkg in ["epel-release", "tailscale", "mosh"]:

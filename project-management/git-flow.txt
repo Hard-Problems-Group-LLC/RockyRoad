@@ -1,0 +1,99 @@
+Git Flow Standard Operating Procedure
+=====================================
+
+Purpose
+-------
+Define branch naming, merge behavior, and day-to-day Git operating rules for
+this repository. This procedure applies to both human operators and AI agents.
+
+Branch Naming
+-------------
+Use these branch prefixes for all new work:
+- Proposals: `proposals/<name-of-proposal>`
+- Bug fixes: `bugfix/<bug-id>`
+- General backlog features: `feature/<descriptive-name>`
+
+Naming guidance:
+- Use lowercase and hyphen-separated tokens after the prefix.
+- Keep names short but specific.
+- Preserve bug IDs exactly for `bugfix/*` branches.
+- Avoid ad hoc prefixes unless explicitly approved by an operator.
+
+Lifecycle
+---------
+1. Start from current `trunk`.
+2. Create a branch with the required prefix.
+3. Implement work in small, coherent commits.
+4. Run required local checks before merging.
+5. Merge back to `trunk` after validation.
+6. Push updated `trunk`.
+
+Standard Merge Order
+--------------------
+When multiple branches are pending:
+1. Merge prerequisite proposals first when they define behavior needed by
+   downstream work.
+2. Merge bugfix branches before dependent features when bug fixes unblock
+   active work.
+3. Merge feature branches after relevant proposals and bugfixes land.
+4. Re-run checks after each conflict resolution and before final push.
+
+Conflict Resolution
+-------------------
+- Favor correctness and current project policy over preserving stale wording.
+- Keep accepted specification text aligned with implementation and tests.
+- Preserve completed-task history from both sides unless entries are truly
+  duplicative; if duplicates exist, consolidate without losing context.
+- Do not discard user-authored changes unless explicitly directed.
+
+Required Checks Before Merge Completion
+---------------------------------------
+Run all required checks via timeout wrapper:
+- `python TheKnowledge/scripts/run_tool_with_timeout.py black`
+- `python TheKnowledge/scripts/run_tool_with_timeout.py ruff`
+- `python TheKnowledge/scripts/run_tool_with_timeout.py compileall`
+- `python TheKnowledge/scripts/run_tool_with_timeout.py
+  entropy_check`
+- `python TheKnowledge/scripts/run_tool_with_timeout.py
+  entropy_tripwire_verify`
+- `python TheKnowledge/scripts/run_tool_with_timeout.py pytest`
+- Standardized push path:
+  - `python TheKnowledge/scripts/git_standard_commit_push.py -m
+    "<subject>"`
+  This command blocks push unless the cached quality gate passes, including
+  entropy tripwire verification. When
+  `project-management/state/pending-commit-changes.txt` is nonblank, the
+  command uses it as commit body text and clears the file after a successful
+  local commit.
+- Standardized pull path:
+  - `python TheKnowledge/scripts/git_veteran_pull.py`
+  This command enforces a guarded fast-forward pull workflow.
+
+If known failures are already tracked and unchanged, document that explicitly
+in completion notes and merge summaries.
+
+Autonomous Operation Variance
+-----------------------------
+Default Git flow in many teams uses pull requests for branch integration.
+This repository currently permits an autonomous variance when the operator has
+explicitly authorized independent execution:
+- Proposal, bugfix, and feature branches may be merged directly into `trunk`
+  without opening individual pull requests.
+- The operator may still request pull requests for specific high-risk or
+  high-impact changes at any time.
+- Pull requests are expected to be used primarily for version-level reviews or
+  work that proves to require human review.
+
+This variance does not reduce testing or documentation requirements. All
+standard validation, traceability, and project-management updates remain
+mandatory.
+
+Operational Notes
+-----------------
+- Use the repository's configured SSH host alias for remote operations, as
+  documented in local operator notes.
+- Keep the managed git pre-commit hook installed; setup scripts maintain it
+  through `TheKnowledge/scripts/install_git_hooks.py`.
+- Keep local working trees clean before broad integration work when practical.
+- Record significant merge operations and outcomes in project-management logs
+  when they affect backlog status, bug status, or delivery traceability.

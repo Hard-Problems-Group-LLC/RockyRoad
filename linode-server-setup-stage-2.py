@@ -220,26 +220,45 @@ def configure_tailscale_certs() -> tuple[str, str, str]:
     
     return ts_ip, fqdn, cert_dir
 
+
+def cleanup_smoketest_resources(container_name: str, port: str, local_test_dir: str) -> None:
+    """Best-effort teardown for server smoketest resources."""
+    logger.info("Tearing down smoketest infrastructure...")
+    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
+    run_cmd(
+        ["sudo", "firewall-cmd", "--zone=internal", f"--remove-port={port}/tcp"],
+        check=False,
+        silent=True,
+    )
+    run_cmd(["rm", "-rf", local_test_dir], check=False, silent=True)
+    logger.info("Cleanup complete.")
+
+
 def run_smoketest(ts_ip: str, fqdn: str, cert_dir: str) -> None:
     container_name = "stage2-podman-smoketest"
     port = "9876"
     challenge_secret = str(uuid.uuid4())
     current_user = os.environ.get("USER", os.getlogin())
     hostname = socket.gethostname()
-
-    logger.info("Ensuring firewalld permits smoketest traffic on the internal zone...")
-    run_cmd(["sudo", "firewall-cmd", "--zone=internal", f"--add-port={port}/tcp"], check=False, silent=True)
-
-    logger.info("Cleaning up any existing smoketest containers...")
-    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
-
     local_test_dir = os.path.expanduser("~/.smoketest_env")
-    run_cmd(["mkdir", "-p", local_test_dir])
-    run_cmd(["sudo", "cp", f"{cert_dir}/ts.crt", f"{cert_dir}/ts.key", local_test_dir])
-    run_cmd(["sudo", "chown", "-R", f"{current_user}:{current_user}", local_test_dir])
 
-    # Caddyfile configuring a cache-busting redirect and serving the HTML template
-    caddyfile_content = f"""
+    try:
+        logger.info("Ensuring firewalld permits smoketest traffic on the internal zone...")
+        run_cmd(
+            ["sudo", "firewall-cmd", "--zone=internal", f"--add-port={port}/tcp"],
+            check=False,
+            silent=True,
+        )
+
+        logger.info("Cleaning up any existing smoketest containers...")
+        run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
+
+        run_cmd(["mkdir", "-p", local_test_dir])
+        run_cmd(["sudo", "cp", f"{cert_dir}/ts.crt", f"{cert_dir}/ts.key", local_test_dir])
+        run_cmd(["sudo", "chown", "-R", f"{current_user}:{current_user}", local_test_dir])
+
+        # Caddyfile configuring a cache-busting redirect and serving the HTML template
+        caddyfile_content = f"""
 {fqdn}:{port} {{
     tls /certs/ts.crt /certs/ts.key
     log {{
@@ -272,8 +291,8 @@ def run_smoketest(ts_ip: str, fqdn: str, cert_dir: str) -> None:
     }}
 }}
 """
-    # High-impact HTML with neon/dark UI and Caddy template tags for real-time evaluation
-    html_content = f"""<!DOCTYPE html>
+        # High-impact HTML with neon/dark UI and Caddy template tags for real-time evaluation
+        html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Challenge Accepted</title>
@@ -299,83 +318,78 @@ def run_smoketest(ts_ip: str, fqdn: str, cert_dir: str) -> None:
 </body>
 </html>
 """
-    caddyfile_path = os.path.join(local_test_dir, "Caddyfile")
-    html_path = os.path.join(local_test_dir, "index.html")
-    
-    with open(caddyfile_path, "w") as f: 
-        f.write(caddyfile_content)
-    with open(html_path, "w") as f:
-        f.write(html_content)
+        caddyfile_path = os.path.join(local_test_dir, "Caddyfile")
+        html_path = os.path.join(local_test_dir, "index.html")
 
-    logger.info(f"Deploying '{container_name}' using official Caddy image...")
-    podman_cmd = [
-        "podman", "run", "-d", "--name", container_name,
-        "-p", f"{ts_ip}:{port}:{port}",
-        "-v", f"{local_test_dir}:/certs:ro,Z",
-        "-v", f"{caddyfile_path}:/etc/caddy/Caddyfile:ro,Z",
-        "-v", f"{html_path}:/usr/share/caddy/index.html:ro,Z",
-        "docker.io/library/caddy:alpine"
-    ]
-    run_cmd(podman_cmd, stream_output=True)
+        with open(caddyfile_path, "w") as f:
+            f.write(caddyfile_content)
+        with open(html_path, "w") as f:
+            f.write(html_content)
 
-    url = f"https://{fqdn}:{port}/challenge/{challenge_secret}"
-    
-    while True:
-        print("\n" + "="*60)
-        print("--- PODMAN SECURE DEPLOYMENT SMOKETEST (via CADDY) ---")
-        print("Caddy container is running. Open this URL in your local browser:")
-        print(f"\n{url}\n")
-        print("Select the result observed in your browser:")
-        print("  1 - Success page (Dark UI) observed successfully")
-        print("  2 - ERROR: ERR_ADDRESS_UNREACHABLE")
-        print("  3 - ERROR: ERR_CONNECTION_TIMED_OUT")
-        print("  4 - ERROR: ERR_CONNECTION_REFUSED")
-        print("  5 - ERROR: NET::ERR_CERT_AUTHORITY_INVALID (or SSL error)")
-        print("  6 - ERROR: DNS_PROBE_FINISHED_NXDOMAIN")
-        print("  7 - ERROR: HTTP 404 / 500")
-        print("  q - Quit (abort and cleanup)")
-        print("="*60)
+        logger.info(f"Deploying '{container_name}' using official Caddy image...")
+        podman_cmd = [
+            "podman", "run", "-d", "--name", container_name,
+            "-p", f"{ts_ip}:{port}:{port}",
+            "-v", f"{local_test_dir}:/certs:ro,Z",
+            "-v", f"{caddyfile_path}:/etc/caddy/Caddyfile:ro,Z",
+            "-v", f"{html_path}:/usr/share/caddy/index.html:ro,Z",
+            "docker.io/library/caddy:alpine"
+        ]
+        run_cmd(podman_cmd, stream_output=True)
 
-        choice = input("\nEnter choice: ").strip().lower()
+        url = f"https://{fqdn}:{port}/challenge/{challenge_secret}"
 
-        if choice == '1':
-            logs = run_cmd(["podman", "logs", container_name], silent=True).stdout
-            # Validate HTTP 200 via Caddy access logs
-            if challenge_secret in logs and "200" in logs:
-                logger.info("Success verified in Caddy logs! Infrastructure is operating nominally.")
-                break
-            else:
+        while True:
+            print("\n" + "="*60)
+            print("--- PODMAN SECURE DEPLOYMENT SMOKETEST (via CADDY) ---")
+            print("Caddy container is running. Open this URL in your local browser:")
+            print(f"\n{url}\n")
+            print("Select the result observed in your browser:")
+            print("  1 - Success page (Dark UI) observed successfully")
+            print("  2 - ERROR: ERR_ADDRESS_UNREACHABLE")
+            print("  3 - ERROR: ERR_CONNECTION_TIMED_OUT")
+            print("  4 - ERROR: ERR_CONNECTION_REFUSED")
+            print("  5 - ERROR: NET::ERR_CERT_AUTHORITY_INVALID (or SSL error)")
+            print("  6 - ERROR: DNS_PROBE_FINISHED_NXDOMAIN")
+            print("  7 - ERROR: HTTP 404 / 500")
+            print("  q - Quit (abort and cleanup)")
+            print("="*60)
+
+            choice = input("\nEnter choice: ").strip().lower()
+
+            if choice == '1':
+                logs = run_cmd(["podman", "logs", container_name], silent=True).stdout
+                # Validate HTTP 200 via Caddy access logs
+                if challenge_secret in logs and "200" in logs:
+                    logger.info("Success verified in Caddy logs! Infrastructure is operating nominally.")
+                    break
                 logger.warning("The expected 200 OK wasn't found in Caddy's logs. Are you sure you hit the exact URL?")
                 input("Press Enter to return to the menu...")
-        elif choice == '2':
-            print("\n[DIAGNOSTIC: ERR_ADDRESS_UNREACHABLE]\nClient device lacks IP route to Tailscale subnet.")
-            input("\nPress Enter to return...")
-        elif choice == '3':
-            print("\n[DIAGNOSTIC: ERR_CONNECTION_TIMED_OUT]\nFirewall is dropping packets. Test with: sudo firewall-cmd --list-all --zone=internal")
-            input("\nPress Enter to return...")
-        elif choice == '4':
-            print("\n[DIAGNOSTIC: ERR_CONNECTION_REFUSED]\nNothing is listening. Container likely crashed. Test with: podman logs stage2-podman-smoketest")
-            input("\nPress Enter to return...")
-        elif choice == '5':
-            print("\n[DIAGNOSTIC: SSL / CERTIFICATE ERRORS]\nBrowser rejecting cert. Check output of: curl -kv https://" + fqdn + ":" + port)
-            input("\nPress Enter to return...")
-        elif choice == '6':
-            print("\n[DIAGNOSTIC: DNS_PROBE_FINISHED_NXDOMAIN]\nMagicDNS failure. Ensure Tailscale DNS settings are active on the client.")
-            input("\nPress Enter to return...")
-        elif choice == '7':
-            print("\n[DIAGNOSTIC: HTTP ERRORS]\nHit the catch-all 404 route. Verify the exact challenge UUID URL.")
-            input("\nPress Enter to return...")
-        elif choice == 'q':
-            logger.warning("User aborted the smoketest.")
-            break
-        else:
-            print("Invalid selection.")
-
-    logger.info("Tearing down smoketest infrastructure...")
-    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
-    run_cmd(["sudo", "firewall-cmd", "--zone=internal", f"--remove-port={port}/tcp"], check=False, silent=True)
-    run_cmd(["rm", "-rf", local_test_dir], check=False, silent=True)
-    logger.info("Cleanup complete.")
+            elif choice == '2':
+                print("\n[DIAGNOSTIC: ERR_ADDRESS_UNREACHABLE]\nClient device lacks IP route to Tailscale subnet.")
+                input("\nPress Enter to return...")
+            elif choice == '3':
+                print("\n[DIAGNOSTIC: ERR_CONNECTION_TIMED_OUT]\nFirewall is dropping packets. Test with: sudo firewall-cmd --list-all --zone=internal")
+                input("\nPress Enter to return...")
+            elif choice == '4':
+                print("\n[DIAGNOSTIC: ERR_CONNECTION_REFUSED]\nNothing is listening. Container likely crashed. Test with: podman logs stage2-podman-smoketest")
+                input("\nPress Enter to return...")
+            elif choice == '5':
+                print("\n[DIAGNOSTIC: SSL / CERTIFICATE ERRORS]\nBrowser rejecting cert. Check output of: curl -kv https://" + fqdn + ":" + port)
+                input("\nPress Enter to return...")
+            elif choice == '6':
+                print("\n[DIAGNOSTIC: DNS_PROBE_FINISHED_NXDOMAIN]\nMagicDNS failure. Ensure Tailscale DNS settings are active on the client.")
+                input("\nPress Enter to return...")
+            elif choice == '7':
+                print("\n[DIAGNOSTIC: HTTP ERRORS]\nHit the catch-all 404 route. Verify the exact challenge UUID URL.")
+                input("\nPress Enter to return...")
+            elif choice == 'q':
+                logger.warning("User aborted the smoketest.")
+                break
+            else:
+                print("Invalid selection.")
+    finally:
+        cleanup_smoketest_resources(container_name, port, local_test_dir)
 
 def main() -> None:
     logger.info("--- Initiating Stage 2 Provisioning Sequence ---")
@@ -401,6 +415,9 @@ def main() -> None:
         run_smoketest(ts_ip, fqdn, cert_dir)
         
         logger.info("--- Stage 2 Provisioning Completed ---")
+    except KeyboardInterrupt:
+        logger.warning("Provisioning interrupted by user.")
+        sys.exit(130)
     except Exception as e:
         logger.critical(f"FATAL ERROR: {str(e)}")
         sys.exit(1)

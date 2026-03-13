@@ -66,8 +66,12 @@ def prompt_existing(tool_name: str) -> str:
 
 def update_system() -> None:
     """Applies all pending OS updates and enables EPEL."""
+    logger.info("Cleaning DNF cache to prevent stale metadata issues...")
+    run_cmd(["sudo", "dnf", "clean", "all"], stream_output=True)
+    
     logger.info("Applying core OS updates...")
     run_cmd(["sudo", "dnf", "update", "-y"], stream_output=True)
+    
     logger.info("Ensuring EPEL repository is enabled...")
     run_cmd(["sudo", "dnf", "install", "-y", "epel-release"], stream_output=True)
 

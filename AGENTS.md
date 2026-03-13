@@ -1,3 +1,14 @@
+<!-- THEKNOWLEDGE_MANAGED_HEADER_START -->
+This project uses The Hard Problems Group's specifications and guidance
+framework, TheKnowledge. Both AI agents and human developers should reference
+`TheKnowledge/AGENTS.md` for detailed instructions.
+
+---
+
+Any project-specific `AGENTS.md` content should go below this line and above
+the managed TheKnowledge footer.
+<!-- THEKNOWLEDGE_MANAGED_HEADER_END -->
+
 # Agent Instructions: RockyRoad Provisioning
 
 ## Project Context
@@ -55,3 +66,28 @@ must strictly adhere to the following rules:
   `subprocess`, `os`, `urllib`) to minimize bootstrap friction. Do not
   introduce `pip` dependencies for core provisioning scripts unless
   explicitly authorized.
+
+<!-- THEKNOWLEDGE_MANAGED_FOOTER_START -->
+---
+
+<!-- TheKnowledge-managed footer: place overrides here when the consuming
+project needs behavior different from TheKnowledge's own repository setup. -->
+
+## TheKnowledge Overrides
+- Use `project-management/backlog.txt` as ordered pending work.
+- Keep `project-management/tasks-in-progress.txt` minimal and current.
+- Record finished work at the top of
+  `project-management/completed-tasks.txt` with ISO 8601 timestamps.
+- Track operator actions for AI in `project-management/ai-human-requests.txt`.
+- Use `project-management/deferred.txt` for explicitly deferred work.
+- Queue brief commit-ready summaries in
+  `project-management/state/pending-commit-changes.txt`.
+- Maintain bug lifecycle files under `project-management/bugs/`.
+- Use `TheKnowledge/standards-and-practices/docs/`
+  `AI-backlog-iteration.txt` when told to iterate the backlog.
+- Use the consuming project's own `project-management/git-flow.txt` for branch
+  and merge operations.
+- Use `python TheKnowledge/scripts/git_standard_commit_push.py -m
+  "<subject>"` so queued commit summaries become commit body text and the
+  queue file is cleared after a successful local commit.
+<!-- THEKNOWLEDGE_MANAGED_FOOTER_END -->

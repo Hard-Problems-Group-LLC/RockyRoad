@@ -97,22 +97,64 @@ def install_podman() -> None:
     """Installs Podman and dependencies interactively."""
     pkgs = [
         "dnf-plugins-core", "podman", "podman-plugins", "slirp4netns",
-        "passt-selinux", "postgresql-devel", "libdb-devel", "libdb-utils"
+        "passt", "passt-selinux", "postgresql-devel", "libdb-devel",
+        "libdb-utils"
     ]
-    
-    if shutil.which("podman"):
+
+    missing_pkgs = []
+    for pkg in pkgs:
+        result = run_cmd(["rpm", "-q", pkg], check=False, silent=True)
+        if result.returncode != 0:
+            missing_pkgs.append(pkg)
+
+    podman_present = shutil.which("podman") is not None
+    if podman_present:
         action = prompt_existing("Podman")
         if action == 'D':
-            run_cmd(["sudo", "dnf", "remove", "-y", "podman"])
+            run_cmd(["sudo", "dnf", "remove", "-y", "podman", "podman-plugins"])
             run_cmd(["rm", "-rf", os.path.expanduser("~/.local/share/containers")], check=False)
+            podman_present = False
+            missing_pkgs = pkgs[:]
         elif action == 'R':
             run_cmd(["sudo", "dnf", "upgrade", "-y"] + pkgs, stream_output=True)
+            missing_pkgs = []
+        elif missing_pkgs:
+            logger.info(
+                "Existing Podman installation is missing required packages: %s",
+                ", ".join(missing_pkgs),
+            )
+            run_cmd(["sudo", "dnf", "install", "-y"] + missing_pkgs, stream_output=True)
+            missing_pkgs = []
 
-    if not shutil.which("podman"):
+    if not podman_present:
         run_cmd(["sudo", "dnf", "install", "-y"] + pkgs, stream_output=True)
-        
+    elif missing_pkgs:
+        run_cmd(["sudo", "dnf", "install", "-y"] + missing_pkgs, stream_output=True)
+
     current_user = os.environ.get("USER", os.getlogin())
     run_cmd(["sudo", "loginctl", "enable-linger", current_user])
+
+
+def ensure_reference_container_image(image_name: str) -> None:
+    """Ensures the workstation smoketest reference image is available locally."""
+    logger.info("Verifying Podman smoketest reference image: %s", image_name)
+    image_check = run_cmd(
+        ["podman", "image", "exists", image_name],
+        check=False,
+        silent=True,
+    )
+    if image_check.returncode == 0:
+        logger.info("Reference image already present locally.")
+        return
+
+    logger.info("Pulling Podman smoketest reference image...")
+    pull_result = run_cmd(["podman", "pull", image_name], check=False, silent=True)
+    if pull_result.returncode != 0:
+        raise RuntimeError(
+            "Failed to pull the workstation smoketest reference image. "
+            f"Image: {image_name}. "
+            f"Details: {(pull_result.stderr or pull_result.stdout or '').strip()}"
+        )
 
 def install_nvm() -> bool:
     """Installs NVM, Node.js, and NPM interactively."""
@@ -213,35 +255,66 @@ def configure_tailscale_certs() -> tuple[str, str, str]:
     run_cmd(["sudo", "chmod", "640", key_path])
     return ts_ip, fqdn, cert_dir
 
+
+def cleanup_smoketest_resources(container_name: str, port: str, local_test_dir: str) -> None:
+    """Best-effort teardown for workstation smoketest resources."""
+    logger.info("Tearing down workstation smoketest infrastructure...")
+    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
+    run_cmd(
+        ["sudo", "firewall-cmd", "--zone=internal", f"--remove-port={port}/tcp"],
+        check=False,
+        silent=True,
+    )
+    run_cmd(["rm", "-rf", local_test_dir], check=False, silent=True)
+    logger.info("Cleanup complete.")
+
+
 def run_smoketest(ts_ip: str, fqdn: str, cert_dir: str) -> None:
     """Deploys a Caddy container to verify rootless networking and TLS."""
     container_name = "workstation-podman-smoketest"
+    reference_image = "docker.io/library/caddy:alpine"
     port = "9876"
     challenge_secret = str(uuid.uuid4())
     current_user = os.environ.get("USER", os.getlogin())
     hostname = socket.gethostname()
-
-    run_cmd(["sudo", "firewall-cmd", "--zone=internal", f"--add-port={port}/tcp"], check=False, silent=True)
-    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
-
     local_test_dir = os.path.expanduser("~/.smoketest_env")
-    run_cmd(["mkdir", "-p", local_test_dir])
-    run_cmd(["sudo", "cp", f"{cert_dir}/ts.crt", f"{cert_dir}/ts.key", local_test_dir])
-    run_cmd(["sudo", "chown", "-R", f"{current_user}:{current_user}", local_test_dir])
 
-    caddyfile_content = f"""
+    try:
+        logger.info("Ensuring firewalld permits smoketest traffic on the internal zone...")
+        run_cmd(
+            ["sudo", "firewall-cmd", "--zone=internal", f"--add-port={port}/tcp"],
+            check=False,
+            silent=True,
+        )
+
+        logger.info("Cleaning up any existing workstation smoketest containers...")
+        run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
+
+        run_cmd(["mkdir", "-p", local_test_dir])
+        run_cmd(["sudo", "cp", f"{cert_dir}/ts.crt", f"{cert_dir}/ts.key", local_test_dir])
+        run_cmd(["sudo", "chown", "-R", f"{current_user}:{current_user}", local_test_dir])
+
+        # Caddyfile configuring a cache-busting redirect and serving the HTML template
+        caddyfile_content = f"""
 {fqdn}:{port} {{
     tls /certs/ts.crt /certs/ts.key
-    log {{ output stdout }}
+    log {{
+        output stdout
+    }}
+    
+    # Require cache buster query string, otherwise redirect with timestamp
     @needs_cb {{
         path /challenge/{challenge_secret}
         not query cb=*
     }}
     redir @needs_cb /challenge/{challenge_secret}?cb={{time.now.unix}} 302
+    
+    # Handle the cache-busted request
     @has_cb {{
         path /challenge/{challenge_secret}
         query cb=*
     }}
+    
     handle @has_cb {{
         header Cache-Control "no-cache, no-store, must-revalidate"
         templates
@@ -249,30 +322,124 @@ def run_smoketest(ts_ip: str, fqdn: str, cert_dir: str) -> None:
         rewrite * /index.html
         file_server
     }}
-    handle {{ respond "404 Not Found." 404 }}
+
+    handle {{
+        respond "404 Not Found. Provide the correct challenge sequence." 404
+    }}
 }}
 """
-    html_content = f"""<!DOCTYPE html><html><head><title>Challenge Accepted</title><style>body {{ font-family: sans-serif; background-color: #121212; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; text-align: center; margin: 0; }} .container {{ background-color: #1e1e1e; padding: 40px; border-radius: 10px; border: 1px solid #00ff80; box-shadow: 0 4px 20px rgba(0,255,128,0.2); }} h1 {{ color: #00ff80; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }} .highlight {{ color: #00ff80; font-weight: bold; }} .meta {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #333; font-size: 0.9em; color: #777; }}</style></head><body><div class="container"><h1>Success!</h1><p>Workstation framework nominal.</p><div class="meta">Server: <span class="highlight">{hostname}</span><br>Time: <span class="highlight">{{{{now | date "Mon, 02 Jan 2006 15:04:05 MST"}}}}</span></div></div></body></html>"""
-    
-    caddyfile_path = os.path.join(local_test_dir, "Caddyfile")
-    html_path = os.path.join(local_test_dir, "index.html")
-    with open(caddyfile_path, "w") as f: f.write(caddyfile_content)
-    with open(html_path, "w") as f: f.write(html_content)
+        # High-impact HTML with neon/dark UI and Caddy template tags for real-time evaluation
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Challenge Accepted</title>
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }}
+        .container {{ background-color: #1e1e1e; padding: 40px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,255,128,0.2); border: 1px solid #00ff80; }}
+        h1 {{ color: #00ff80; margin-bottom: 10px; font-size: 2.5em; text-transform: uppercase; letter-spacing: 2px; }}
+        p {{ font-size: 1.2em; color: #aaaaaa; }}
+        .meta {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #333; font-size: 0.9em; color: #777; }}
+        .highlight {{ color: #00ff80; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Success!</h1>
+        <p>Challenge authenticated securely via Tailscale and Caddy.</p>
+        <p>You may now close this browser tab.</p>
+        <div class="meta">
+            Server: <span class="highlight">{hostname}</span><br>
+            Time: <span class="highlight">{{{{now | date "Mon, 02 Jan 2006 15:04:05 MST"}}}}</span>
+        </div>
+    </div>
+</body>
+</html>
+"""
 
-    podman_cmd = ["podman", "run", "-d", "--name", container_name, "-p", f"{ts_ip}:{port}:{port}", "-v", f"{local_test_dir}:/certs:ro,Z", "-v", f"{caddyfile_path}:/etc/caddy/Caddyfile:ro,Z", "-v", f"{html_path}:/usr/share/caddy/index.html:ro,Z", "docker.io/library/caddy:alpine"]
-    run_cmd(podman_cmd, stream_output=True)
+        caddyfile_path = os.path.join(local_test_dir, "Caddyfile")
+        html_path = os.path.join(local_test_dir, "index.html")
+        with open(caddyfile_path, "w") as f:
+            f.write(caddyfile_content)
+        with open(html_path, "w") as f:
+            f.write(html_content)
 
-    url = f"https://{fqdn}:{port}/challenge/{challenge_secret}"
-    while True:
-        print("\n" + "="*60 + f"\n--- WORKSTATION SECURE DEPLOYMENT SMOKETEST ---\nURL: {url}\n" + "="*60)
-        choice = input("Select result: [1] Success page, [2] Unreachable, [3] Timeout, [4] Refused, [5] SSL Error, [q] Quit: ").strip().lower()
-        if choice == '1': break
-        elif choice == 'q': break
-        else: print("Refer to server documentation for diagnostic steps. Press Enter to retry.")
+        ensure_reference_container_image(reference_image)
+        logger.info(f"Deploying '{container_name}' using official Caddy image...")
+        podman_cmd = [
+            "podman", "run", "-d", "--name", container_name,
+            "-p", f"{ts_ip}:{port}:{port}",
+            "-v", f"{local_test_dir}:/certs:ro,Z",
+            "-v", f"{caddyfile_path}:/etc/caddy/Caddyfile:ro,Z",
+            "-v", f"{html_path}:/usr/share/caddy/index.html:ro,Z",
+            reference_image
+        ]
+        run_cmd(podman_cmd, stream_output=True)
+        inspect_result = run_cmd(
+            ["podman", "inspect", "--format", "{{.State.Status}}", container_name],
+            check=False,
+            silent=True,
+        )
+        container_state = (inspect_result.stdout or "").strip()
+        logger.info(f"Workstation smoketest container state after launch: {container_state or 'unknown'}")
+        if inspect_result.returncode != 0 or container_state != "running":
+            logs = run_cmd(["podman", "logs", container_name], check=False, silent=True)
+            raise RuntimeError(
+                "Workstation smoketest container failed to stay running. "
+                f"State: {container_state or 'unknown'}. "
+                f"Logs: {(logs.stdout or logs.stderr or '').strip()}"
+            )
 
-    run_cmd(["podman", "rm", "-f", container_name], check=False, silent=True)
-    run_cmd(["sudo", "firewall-cmd", "--zone=internal", f"--remove-port={port}/tcp"], check=False, silent=True)
-    run_cmd(["rm", "-rf", local_test_dir], check=False, silent=True)
+        url = f"https://{fqdn}:{port}/challenge/{challenge_secret}"
+        while True:
+            print("\n" + "="*60)
+            print("--- WORKSTATION PODMAN SECURE DEPLOYMENT SMOKETEST (via CADDY) ---")
+            print("Caddy container is running. Open this URL in your local browser:")
+            print(f"\n{url}\n")
+            print("Select the result observed in your browser:")
+            print("  1 - Success page (Dark UI) observed successfully")
+            print("  2 - ERROR: ERR_ADDRESS_UNREACHABLE")
+            print("  3 - ERROR: ERR_CONNECTION_TIMED_OUT")
+            print("  4 - ERROR: ERR_CONNECTION_REFUSED")
+            print("  5 - ERROR: NET::ERR_CERT_AUTHORITY_INVALID (or SSL error)")
+            print("  6 - ERROR: DNS_PROBE_FINISHED_NXDOMAIN")
+            print("  7 - ERROR: HTTP 404 / 500")
+            print("  q - Quit (abort and cleanup)")
+            print("="*60)
+
+            choice = input("\nEnter choice: ").strip().lower()
+
+            if choice == '1':
+                logs = run_cmd(["podman", "logs", container_name], silent=True).stdout
+                if challenge_secret in logs and "200" in logs:
+                    logger.info("Success verified in Caddy logs! Infrastructure is operating nominally.")
+                    break
+                logger.warning("The expected 200 OK wasn't found in Caddy's logs. Are you sure you hit the exact URL?")
+                input("Press Enter to return to the menu...")
+            elif choice == '2':
+                print("\n[DIAGNOSTIC: ERR_ADDRESS_UNREACHABLE]\nClient device lacks IP route to Tailscale subnet.")
+                input("\nPress Enter to return...")
+            elif choice == '3':
+                print("\n[DIAGNOSTIC: ERR_CONNECTION_TIMED_OUT]\nFirewall is dropping packets. Test with: sudo firewall-cmd --list-all --zone=internal")
+                input("\nPress Enter to return...")
+            elif choice == '4':
+                print("\n[DIAGNOSTIC: ERR_CONNECTION_REFUSED]\nNothing is listening. Container likely crashed. Test with: podman logs workstation-podman-smoketest")
+                input("\nPress Enter to return...")
+            elif choice == '5':
+                print("\n[DIAGNOSTIC: SSL / CERTIFICATE ERRORS]\nBrowser rejecting cert. Check output of: curl -kv https://" + fqdn + ":" + port)
+                input("\nPress Enter to return...")
+            elif choice == '6':
+                print("\n[DIAGNOSTIC: DNS_PROBE_FINISHED_NXDOMAIN]\nMagicDNS failure. Ensure Tailscale DNS settings are active on the client.")
+                input("\nPress Enter to return...")
+            elif choice == '7':
+                print("\n[DIAGNOSTIC: HTTP ERRORS]\nHit the catch-all 404 route. Verify the exact challenge UUID URL.")
+                input("\nPress Enter to return...")
+            elif choice == 'q':
+                logger.warning("User aborted the smoketest.")
+                break
+            else:
+                print("Invalid selection.")
+    finally:
+        cleanup_smoketest_resources(container_name, port, local_test_dir)
 
 def main() -> None:
     try:
@@ -289,6 +456,9 @@ def main() -> None:
         ts_ip, fqdn, cert_dir = configure_tailscale_certs()
         run_smoketest(ts_ip, fqdn, cert_dir)
         logger.info("--- Workstation Stage 2 Provisioning Completed ---")
+    except KeyboardInterrupt:
+        logger.warning("Provisioning interrupted by user.")
+        sys.exit(130)
     except Exception as e:
         logger.critical(f"FATAL ERROR: {str(e)}")
         sys.exit(1)

@@ -1,0 +1,37 @@
+Completed Tasks
+
+Record completed tasks with newest entries at the top. Use asterisk-plus-blank
+line formatting. Include concise outcomes, owners, blocker resolution notes,
+and ISO 8601 timestamps.
+
+*
+
+  Request: Fix the workstation stage 2 Podman reference container setup bug,
+  copy the server-stage smoketest comments and diagnostics into the
+  workstation script, then run the workstation stage 2 setup script and
+  troubleshoot until the issue is resolved.
+  Requestor: operator
+  Owner: Codex
+  Completed: 2026-03-12T23:12:23-07:00
+  Outcome: Added missing Podman package remediation, reference image
+  verification, container-state diagnostics, and shared `finally` cleanup
+  with `KeyboardInterrupt` handling in both stage 2 scripts.
+  Blocker resolution: Operator supplied the privileged workstation run and
+  browser validation. The 2026-03-12 smoketest reached the success page,
+  Caddy logged the HTTP 200 challenge verification, cleanup completed, and
+  the script exited normally.
+
+*
+
+  Request: Create install-codex-prerequisites.py to bootstrap local
+  Codex-oriented development requirements for RockyRoad.
+  Requestor: operator
+  Owner: Codex
+  Completed: 2026-03-12T23:12:23-07:00
+  Outcome: Added an idempotent Rocky Linux 9.x bootstrap that validates the
+  workstation context, installs missing system packages, provisions `.venv`,
+  installs black/ruff/pytest, refreshes managed Git hooks, installs the
+  repo-local Codex CLI dependency, and writes a `.venv/bin/codex` launcher.
+  Blocker resolution: Local verification passed through `--help`,
+  `--dry-run`, targeted AST parsing, and direct `compileall` on the changed
+  scripts.

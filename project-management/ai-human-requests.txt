@@ -1,0 +1,28 @@
+AI-Human Requests
+=================
+
+Use this queue for non-blocking actions AI agents need humans to perform.
+Record each request with asterisk-plus-blank-line formatting, concise context,
+owner/requestor, and ISO 8601 timestamps.
+
+------------------------------------------------------------------------------
+
+Pending Requests
+----------------
+
+Active Requests
+---------------
+
+Completed Requests
+------------------
+
+*
+
+  2026-03-12T02:19:37-07:00
+  Requestor: operator
+  Action: Investigate and fix the workstation stage 2 Podman reference
+  container bug, align workstation smoketest diagnostics with server stage 2,
+  then run and troubleshoot the workstation stage 2 setup flow to completion.
+  Status: completed by Codex on 2026-03-12; operator supplied sudo
+  authentication and browser validation for the final workstation smoketest,
+  which reached the success page and cleaned up successfully.

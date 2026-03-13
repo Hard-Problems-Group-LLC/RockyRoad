@@ -1,0 +1,32 @@
+Closed Bugs
+
+Record resolved bugs with newest entries at the top. Include timestamps and
+brief resolution notes.
+
+*
+
+  Closed: 2026-03-12T23:12:23-07:00
+  Owner: Codex
+  Summary: Stage 2 smoketest teardown could skip firewall, container, or
+  temp-file cleanup when the server or workstation flow exited early.
+  Resolution: Both stage 2 scripts now wrap smoketest provisioning in
+  `try`/`finally` cleanup helpers and handle `KeyboardInterrupt` at top
+  level.
+  Verification: The normal cleanup path completed after the successful
+  workstation run, and targeted AST parsing plus direct `compileall` passed
+  for the updated scripts.
+
+*
+
+  Closed: 2026-03-12T23:12:23-07:00
+  Owner: Codex
+  Summary: Workstation stage 2 smoketest could fail before browser
+  validation when required rootless Podman packages or the Caddy reference
+  image were missing.
+  Resolution: `install_podman()` now repairs missing packages, including
+  `passt`, and the smoketest ensures `docker.io/library/caddy:alpine`
+  exists, validates container state after launch, and reports container logs
+  on failure.
+  Verification: The 2026-03-12 operator-assisted workstation run reached
+  the success page, Caddy logged the HTTP 200 challenge verification, and
+  cleanup completed normally.
