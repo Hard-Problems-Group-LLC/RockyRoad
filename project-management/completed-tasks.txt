@@ -6,6 +6,22 @@ and ISO 8601 timestamps.
 
 *
 
+  Request: Prepare RockyRoad for first public publication by replacing the
+  placeholder README with an accurate public-facing overview and scrubbing
+  the tree for publication-sensitive references.
+  Requestor: operator
+  Owner: Codex
+  Completed: 2026-03-13T00:35:05-07:00
+  Outcome: Replaced the placeholder README with a public project overview,
+  retained the repository's technical constraints and stage status, and
+  added license and authorship attribution suitable for publication.
+  Blocker resolution: Publication scrub found no consumer names or private
+  host and identity strings in RockyRoad. The only remaining consumer-name
+  references were removed from vendored TheKnowledge tests, and a final
+  repository-wide scan returned clean.
+
+*
+
   Request: Fix the workstation stage 2 Podman reference container setup bug,
   copy the server-stage smoketest comments and diagnostics into the
   workstation script, then run the workstation stage 2 setup script and

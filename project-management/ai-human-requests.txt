@@ -18,6 +18,17 @@ Completed Requests
 
 *
 
+  2026-03-13T00:00:00-07:00
+  Requestor: operator
+  Action: Prepare RockyRoad for first public publication by improving the
+  public README, preserving technical accuracy, and scrubbing the source
+  tree for publication-sensitive references before the first push.
+  Status: completed by Codex on 2026-03-13; the public README was rebuilt,
+  the publication scrub completed, and the tree no longer contains the
+  banned consumer references.
+
+*
+
   2026-03-12T02:19:37-07:00
   Requestor: operator
   Action: Investigate and fix the workstation stage 2 Podman reference
